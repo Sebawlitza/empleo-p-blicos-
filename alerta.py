@@ -5,27 +5,24 @@ import time
 from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# === CONFIGURACIÓN ===
-
-URL = "https://www.empleospublicos.cl"
-
-# Palabras clave que quieres buscar
-PALABRAS_CLAVE = ["Diseñador", "Diseño Gráfico"]
-
+# === Credenciales ya configuradas ===
 # Telegram
 TELEGRAM_TOKEN = "8123123059:AAHm4RP6lM7tzOMYG0IRj3vw6aknTjiN9J4"
 TELEGRAM_CHAT_ID = "5367397088"  # reemplaza con tu chat ID real
 
-# Gmail (opcional)
+# Gmail
 GMAIL_USER = "sebastian.bawlitza@gmail.com"
-GMAIL_PASSWORD = "<ydnlakekkjileobz>"  # tu contraseña de aplicación
+GMAIL_PASSWORD = "ydnlakekkjileobz"  # contraseña de aplicación
 GMAIL_TO = "sebastian.bawlitza@gmail.com"
 
-# Historial de empleos ya vistos
-empleos_vistos = set()
+# === Configuración de búsqueda ===
+URL = "https://www.empleospublicos.cl"
+PALABRAS_CLAVE = ["Diseñador", "Diseño Gráfico"]
 
-# === FUNCIONES ===
+# Para no repetir notificaciones de empleos ya vistos
+empleos_vistos = set()
 
 def enviar_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -37,12 +34,14 @@ def enviar_telegram(mensaje):
 
 def enviar_gmail(asunto, mensaje):
     try:
-        msg = MIMEText(mensaje)
-        msg["Subject"] = asunto
-        msg["From"] = GMAIL_USER
-        msg["To"] = GMAIL_TO
+        msg = MIMEMultipart()
+        msg['From'] = GMAIL_USER
+        msg['To'] = GMAIL_TO
+        msg['Subject'] = asunto
+        msg.attach(MIMEText(mensaje, 'plain'))
 
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
         server.login(GMAIL_USER, GMAIL_PASSWORD)
         server.sendmail(GMAIL_USER, GMAIL_TO, msg.as_string())
         server.quit()
@@ -55,28 +54,36 @@ def revisar_empleos():
         response = requests.get(URL)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        textos = [t.get_text(strip=True) for t in soup.find_all(text=True)
-                  if any(p.lower() in t.lower() for p in PALABRAS_CLAVE)]
+        # Buscar todos los empleos (ajustar selector según la página)
+        empleos = soup.find_all("a")  # Aquí puedes poner un selector más específico
+        nuevos_empleos = []
 
-        nuevos = [t for t in textos if t not in empleos_vistos]
+        for e in empleos:
+            texto = e.get_text()
+            if any(palabra.lower() in texto.lower() for palabra in PALABRAS_CLAVE):
+                if texto not in empleos_vistos:
+                    empleos_vistos.add(texto)
+                    nuevos_empleos.append(texto)
 
-        if nuevos:
-            mensaje = "¡Nuevas ofertas de empleo encontradas!\n\n" + "\n\n".join(nuevos)
+        if nuevos_empleos:
+            mensaje = "Nuevas ofertas encontradas:\n" + "\n".join(nuevos_empleos)
+            print(mensaje)
             enviar_telegram(mensaje)
-            enviar_gmail("Nuevas ofertas de empleo", mensaje)
-            for t in nuevos:
-                empleos_vistos.add(t)
+            enviar_gmail("Alerta de empleos", mensaje)
         else:
             print("No hay nuevas ofertas.")
-    except Exception as e:
-        print(f"[Error al revisar la página]: {e}")
 
-# === PROGRAMACIÓN AUTOMÁTICA ===
+    except Exception as e:
+        print(f"Error al revisar empleos: {e}")
+
+# === Programar ejecución cada 3 horas ===
 schedule.every(3).hours.do(revisar_empleos)
 
-if __name__ == "__main__":
-    revisar_empleos()  # Primera revisión inmediata
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+# Ejecutar inmediatamente la primera vez
+revisar_empleos()
+
+# Mantener el script corriendo
+while True:
+    schedule.run_pending()
+    time.sleep(60)
 
