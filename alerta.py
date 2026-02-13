@@ -5,62 +5,78 @@ import time
 from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
-# ------------------------------
-# CONFIGURACIÓN
-# ------------------------------
+# === CONFIGURACIÓN ===
+
 URL = "https://www.empleospublicos.cl"
-PALABRA_CLAVE = "Diseñador"
 
-# Correo de notificación
-REMITENTE = "sebastian.bawlitza@gmail.com"
-PASSWORD = "ydnlakekkjileobz"  # tu contraseña de aplicación
-DESTINATARIO = "tu_correo@gmail.com"
+# Palabras clave que quieres buscar
+PALABRAS_CLAVE = ["Diseñador", "Diseño Gráfico"]
 
-# Empleos ya vistos
+# Telegram
+TELEGRAM_TOKEN = "8123123059:AAHm4RP6lM7tzOMYG0IRj3vw6aknTjiN9J4"
+TELEGRAM_CHAT_ID = "5367397088"  # reemplaza con tu chat ID real
+
+# Gmail (opcional)
+GMAIL_USER = "sebastian.bawlitza@gmail.com"
+GMAIL_PASSWORD = "<ydnlakekkjileobz>"  # tu contraseña de aplicación
+GMAIL_TO = "sebastian.bawlitza@gmail.com"
+
+# Historial de empleos ya vistos
 empleos_vistos = set()
 
-# ------------------------------
-# FUNCIONES
-# ------------------------------
+# === FUNCIONES ===
 
-def enviar_correo(asunto, mensaje):
-    msg = MIMEMultipart()
-    msg['From'] = REMITENTE
-    msg['To'] = DESTINATARIO
-    msg['Subject'] = asunto
-    msg.attach(MIMEText(mensaje, 'plain'))
-
+def enviar_telegram(mensaje):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje}
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(REMITENTE, PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        print(f"[{datetime.now()}] Correo enviado correctamente")
+        requests.post(url, data=data)
     except Exception as e:
-        print(f"[{datetime.now()}] Error al enviar correo:", e)
+        print(f"Error enviando Telegram: {e}")
 
+def enviar_gmail(asunto, mensaje):
+    try:
+        msg = MIMEText(mensaje)
+        msg["Subject"] = asunto
+        msg["From"] = GMAIL_USER
+        msg["To"] = GMAIL_TO
+
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.login(GMAIL_USER, GMAIL_PASSWORD)
+        server.sendmail(GMAIL_USER, GMAIL_TO, msg.as_string())
+        server.quit()
+    except Exception as e:
+        print(f"Error enviando Gmail: {e}")
 
 def revisar_empleos():
     print(f"[{datetime.now()}] Revisando empleos...")
     try:
         response = requests.get(URL)
-        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        textos = [t.get_text(strip=True) for t in soup.find_all(text=True)
+                  if any(p.lower() in t.lower() for p in PALABRAS_CLAVE)]
+
+        nuevos = [t for t in textos if t not in empleos_vistos]
+
+        if nuevos:
+            mensaje = "¡Nuevas ofertas de empleo encontradas!\n\n" + "\n\n".join(nuevos)
+            enviar_telegram(mensaje)
+            enviar_gmail("Nuevas ofertas de empleo", mensaje)
+            for t in nuevos:
+                empleos_vistos.add(t)
+        else:
+            print("No hay nuevas ofertas.")
     except Exception as e:
-        print(f"[{datetime.now()}] Error al cargar la página:", e)
-        return
+        print(f"[Error al revisar la página]: {e}")
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    ofertas = []
+# === PROGRAMACIÓN AUTOMÁTICA ===
+schedule.every(3).hours.do(revisar_empleos)
 
-    # Reemplaza este selector por el correcto según la página
-    for elemento in soup.find_all("a"):
-        texto = elemento.get_text()
-        if PALABRA_CLAVE.lower() in texto.lower() and texto not in empleos_vistos:
-            ofertas.append(texto)
-            empleos_vistos.add(texto)
-
-    if of
+if __name__ == "__main__":
+    revisar_empleos()  # Primera revisión inmediata
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
 
